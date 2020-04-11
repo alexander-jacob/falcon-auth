@@ -281,10 +281,40 @@ class BasicAuthBackend(AuthBackend):
     """
 
     def __init__(self, user_loader,
-                 auth_header_prefix='Basic'):
+                 auth_header_prefix='Basic',
+                 challenges=None):
 
         self.user_loader = user_loader
         self.auth_header_prefix = auth_header_prefix
+        self.challenges = challenges if challenges else ['Basic']
+
+    def parse_auth_token_from_request(self, auth_header):
+        """
+        Parses and returns Auth token from the request header. Raises
+        `falcon.HTTPUnauthoried exception` with proper error message
+        """
+        if not auth_header:
+            raise falcon.HTTPUnauthorized(
+                description='Missing Authorization Header')
+
+        parts = auth_header.split()
+
+        if parts[0].lower() != self.auth_header_prefix.lower():
+            raise falcon.HTTPUnauthorized(
+                description='Invalid Authorization Header: '
+                            'Must start with {0}'.format(self.auth_header_prefix),
+                challenges=self.challenges)
+
+        elif len(parts) == 1:
+            raise falcon.HTTPUnauthorized(
+                description='Invalid Authorization Header: Token Missing',
+                challenges=self.challenges)
+        elif len(parts) > 2:
+            raise falcon.HTTPUnauthorized(
+                description='Invalid Authorization Header: Contains extra content',
+                challenges=self.challenges)
+
+        return parts[1]
 
     def _extract_credentials(self, req):
         auth = req.get_header('Authorization')
@@ -294,13 +324,15 @@ class BasicAuthBackend(AuthBackend):
 
         except Exception:
             raise falcon.HTTPUnauthorized(
-                description='Invalid Authorization Header: Unable to decode credentials')
+                description='Invalid Authorization Header: Unable to decode credentials',
+                challenges=self.challenges)
 
         try:
             username, password = token.split(':', 1)
         except ValueError:
             raise falcon.HTTPUnauthorized(
-                description='Invalid Authorization: Unable to decode credentials')
+                description='Invalid Authorization: Unable to decode credentials',
+                challenges=self.challenges)
 
         return username, password
 
@@ -314,7 +346,8 @@ class BasicAuthBackend(AuthBackend):
         user = self.user_loader(username, password)
         if not user:
             raise falcon.HTTPUnauthorized(
-                description='Invalid Username/Password')
+                description='Invalid Username/Password',
+                challenges=self.challenges)
 
         return user
 
@@ -427,6 +460,7 @@ class HawkAuthBackend(AuthBackend):
             passed to `user_loader()`). See the `docs <https://mohawk.readthedocs.io/en/latest/usage.html#receiving-a-request>`__
             for further details.
     """
+
     def __init__(self, user_loader, receiver_kwargs):
         try:
             mohawk
@@ -511,7 +545,7 @@ class MultiAuthBackend(AuthBackend):
         for backend in backends:
             if not isinstance(backend, AuthBackend):
                 raise ValueError(('Invalid authentication backend {0}.'
-                                 'Must inherit `falcon.auth.backends.AuthBackend`')
+                                  'Must inherit `falcon.auth.backends.AuthBackend`')
                                  .format(backend))
 
         self.backends = backends
