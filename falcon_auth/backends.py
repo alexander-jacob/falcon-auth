@@ -295,7 +295,8 @@ class BasicAuthBackend(AuthBackend):
         """
         if not auth_header:
             raise falcon.HTTPUnauthorized(
-                description='Missing Authorization Header')
+                description='Missing Authorization Header',
+                challenges=self.challenges)
 
         parts = auth_header.split()
 
